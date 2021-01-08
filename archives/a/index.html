@@ -1,0 +1,413 @@
+<!DOCTYPE HTML>
+<html lang="zh-CN">
+
+<head>
+    <!--Setting-->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1">
+    <meta http-equiv="Cache-Control" content="no-siteapp">
+    <meta http-equiv="Cache-Control" content="no-transform">
+    <meta name="renderer" content="webkit|ie-comp|ie-stand">
+    <meta name="apple-mobile-web-app-capable" content="留声与视">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="format-detection" content="telephone=no,email=no,adress=no">
+    <meta name="browsermode" content="application">
+    <meta name="screen-orientation" content="portrait">
+    <meta name="theme-version" content="1.2.3">
+    <meta name="root" content="/">
+    <link rel="dns-prefetch" href="https://nenufm.com">
+    <!--SEO-->
+
+<meta name="keywords" content=".Net,程序性能,PerfView,火焰图" />
+
+
+<meta name="description" content=".NET运行时在启动过程中在哪里花费时间？
+翻译自 https://mattwarren.org/2020/03/03/Analysing-.NET-Runtime-Startup-with-F..." />
+
+
+<meta name="robots" content="all" />
+<meta name="google" content="all" />
+<meta name="googlebot" content="all" />
+<meta name="verify" content="all" />
+    <!--Title-->
+
+<title>
+    
+    使用Flamegraph分析.NET启动时间 |
+    
+    留声与视
+</title>
+
+<link rel="alternate" href="/atom.xml" title="留声与视" type="application/atom+xml">
+
+
+<link rel="icon" href="/favicon.ico">
+
+    
+
+
+<link rel="stylesheet" href="/css/bootstrap.min.css?rev=3.3.7.css">
+<link rel="stylesheet" href="/css/font-awesome.min.css?rev=4.7.0.css">
+<link rel="stylesheet" href="/css/style.css?rev=@@hash.css">
+
+    
+<div class="hide">
+    <script type="text/javascript">
+    var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+    document.write(unescape("%3Cspan class='cnzz_stat_icon_1279599321 hide' %3E%3Cscript%20src%3D%22https%3A%2F%2Fs95.cnzz.com%2Fz_stat.php%3Fweb_id%3D1272564536%22%3E%3C%2Fscript%3E%3C/span%3E%3Cscript src='" + cnzz_protocol + "s19.cnzz.com/z_stat.php%3Fid%3D1279599321%26show%3Dpic1' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+</div>
+
+
+<script>
+var _hmt = _hmt || [];
+(function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?a43c82797ca3a67a1c6b2486928306b1";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+
+    
+
+<script>
+(function() {
+    var bp = document.createElement('script');
+    var curProtocol = window.location.protocol.split(':')[0];
+    if (curProtocol === 'https') {
+        bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+    } else {
+        bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+    }
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(bp, s);
+})();
+</script>
+
+<meta name="generator" content="Hexo 5.3.0"></head>
+<!--[if lte IE 8]>
+<style>
+    html{ font-size: 1em }
+</style>
+<![endif]-->
+<!--[if lte IE 9]>
+<div style="ie">你使用的浏览器版本过低，为了你更好的阅读体验，请更新浏览器的版本或者使用其他现代浏览器，比如Chrome、Firefox、Safari等。</div>
+<![endif]-->
+<body>
+    <header class="main-header"  style="background-image:url(
+    /img/banner.jpg)"
+     >
+    <div class="main-header-box">
+        <a class="header-avatar" href="/" title='dorthl'>
+            <img src="/img/avatar.jpg" alt="logo头像" class="img-responsive center-block">
+        </a>
+        <div class="branding">
+            <!--<h2 class="text-hide">Snippet主题,从未如此简单有趣</h2>-->
+            
+            <img src="/img/branding.png" alt="Snippet 博客主题" class="img-responsive center-block">
+            
+        </div>
+    </div>
+</header>
+    <nav class="main-navigation">
+    <div class="container">
+        <div class="row">
+            <div class="col-sm-12">
+                <div class="navbar-header"><span class="nav-toggle-button collapsed pull-right" data-toggle="collapse" data-target="#main-menu" id="mnav">
+                        <span class="sr-only"></span>
+                        <i class="fa fa-bars"></i>
+                    </span>
+                    <a class="navbar-brand" href="https://nenufm.com">
+                        留声与视</a>
+                </div>
+                <div class="collapse navbar-collapse" id="main-menu">
+                    <ul class="menu">
+                        
+                        <li role="presentation" class="text-center">
+                            <a href="/"><i class="fa fa-home"></i>
+                                首页</a>
+                        </li>
+                        
+                        <li role="presentation" class="text-center">
+                            <a href="/archives/"><i class="fa fa-list-ul"></i>
+                                时间轴</a>
+                        </li>
+                        
+                        <li role="presentation" class="text-center">
+                            <a href="/about/"><i class="fa fa-ravelry"></i>
+                                关于</a>
+                        </li>
+                        
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</nav>
+    <section class="content-wrap">
+        <div class="container">
+            <div class="row">
+                <main class="col-md-8 main-content m-post">
+                    <p id="process"></p>
+<article class="post">
+    <div class="post-head">
+        <h1 id="使用Flamegraph分析.NET启动时间">
+            
+            使用Flamegraph分析.NET启动时间
+            
+        </h1>
+        <div class="post-meta">
+    
+    <span class="categories-meta fa-wrap">
+        <i class="fa fa-folder-open-o"></i>
+        <a class="category-link" href="/categories/%E7%BC%96%E7%A8%8B/">编程</a>
+    </span>
+    
+    
+    <span class="fa-wrap">
+        <i class="fa fa-tags"></i>
+        <span class="tags-meta">
+            
+            <a class="tag-none-link" href="/tags/Net/" rel="tag">.Net</a> <a class="tag-none-link" href="/tags/PerfView/" rel="tag">PerfView</a> <a class="tag-none-link" href="/tags/%E7%81%AB%E7%84%B0%E5%9B%BE/" rel="tag">火焰图</a> <a class="tag-none-link" href="/tags/%E7%A8%8B%E5%BA%8F%E6%80%A7%E8%83%BD/" rel="tag">程序性能</a>
+            
+        </span>
+    </span>
+    
+    
+    
+    <span class="fa-wrap">
+        <i class="fa fa-clock-o"></i>
+        <span class="date-meta">
+            2021/01/06</span>
+    </span>
+    
+    <span class="fa-wrap">
+        <i class="fa fa-eye"></i>
+        <span id="busuanzi_value_page_pv"></span>
+    </span>
+    
+    
+</div>
+        
+        
+    </div>
+    
+    <div class="post-body post-content">
+        <h1 id="NET运行时在启动过程中在哪里花费时间？"><a href="#NET运行时在启动过程中在哪里花费时间？" class="headerlink" title=".NET运行时在启动过程中在哪里花费时间？"></a>.NET运行时在启动过程中在哪里花费时间？</h1><blockquote>
+<p>翻译自 <a target="_blank" rel="noopener" href="https://mattwarren.org/2020/03/03/Analysing-.NET-Runtime-Startup-with-Flamegraphs/">https://mattwarren.org/2020/03/03/Analysing-.NET-Runtime-Startup-with-Flamegraphs/</a></p>
+</blockquote>
+<h2 id="代码样例"><a href="#代码样例" class="headerlink" title="代码样例"></a>代码样例</h2><p>在本练习中，我们仅关注程序启动期间的.NET运行时，我们确保正在运行最少数量的用户代码，因此使用以下“Hello World”：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">using System;</span><br><span class="line">namespace HelloWorld</span><br><span class="line">&#123;</span><br><span class="line">    class Program</span><br><span class="line">    &#123;</span><br><span class="line">        static void Main(string[] args)</span><br><span class="line">        &#123;</span><br><span class="line">            Console.WriteLine(&quot;Hello World!&quot;);</span><br><span class="line">            Console.WriteLine(&quot;Press &lt;ENTER&gt; to exit&quot;);</span><br><span class="line">            Console.ReadLine();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>之所以添加Console.ReadLine()调用是因为我想确保在PerfView仍在收集数据的同时该过程不会退出。</p>
+<h2 id="数据采集"><a href="#数据采集" class="headerlink" title="数据采集"></a>数据采集</h2><p>PerfView是一个非常强大的程序，但不是最用户友好的工具，因此我整理了逐步指南：</p>
+<ul>
+<li>下载并运行最新版本的“ PerfView.exe”</li>
+<li>单击“Run a command”或（Alt-R），然后单击“collect data while the command is running”</li>
+<li>确保输入以下值：<ul>
+<li>“Command”</li>
+<li>“Current Dir”</li>
+</ul>
+</li>
+<li>如果尚未选中，请勾选“ Cpu Samples ”</li>
+<li>将“ Max Collect Sec ”设置为15秒（因为我们的“ HelloWorld”应用程序永远不会退出，因此我们需要确保PerfView在某个时刻停止收集数据）</li>
+<li>确保已选择“ .NET Symbol Collection ”</li>
+<li>点击运行命令</li>
+</ul>
+<p><img src="../../static/images/c5ff606a305ee5a5d7cef2a98cc97ee7fe1959cb6ac5e7b77087f6f05868ddbc.png" alt="PerfView - Collection Options - annotated"></p>
+<p>如果随后查看该日志，则可以看到该日志正在收集数据，获取符号并最终将所有内容写到.zip文件中。完成该过程后，您应该在主UI的左侧窗格中看到新创建的文件，在这种情况下，该文件称为“ PerfViewData.etl.zip”</p>
+<h2 id="数据处理"><a href="#数据处理" class="headerlink" title="数据处理"></a>数据处理</h2><p>拥有“ .etl.zip”文件后，双击该文件，您将看到带有所有可用数据的树状视图。现在，选择“ CPU Stacks”，将显示如下视图：</p>
+<p><img src="../../static/images/8ea3f490fbb7e3c8da7f097acdd3dcc46e14ffb6f85eacf16c077e1ee0d0ca97.png" alt="PerfView - Unresolved Symbols"></p>
+<p>注意列表中有很多“？” 的字符，这意味着PerfView无法解决方法名称，因为它尚未解析运行时dll的必要符号。让我们修复：</p>
+<ul>
+<li>打开“ CPU堆栈”</li>
+<li>在列表中，选择“ HelloWorld ”过程（PerfView在整个计算机范围内收集数据）</li>
+<li>在“ GroupPats ”下拉列表中，选择“ [no grouping]”</li>
+<li>可选，将“符号路径”从默认值更改为其他值</li>
+<li>在“按名称”标签中，按“ Ctrl + A”以选择所有行</li>
+<li>右键单击并选择“查找符号”（或仅单击“ Alt + S”）</li>
+</ul>
+<p>现在，”CPU Stacks”视图应如下所示：</p>
+<p><img src="../../static/images/a72b381b15a76ee06490bfe124cdc823ac035f8c461b2c1f2c840e21cfd3a5b8.png" alt="PerfView - Resolved Symbols"></p>
+<p>最后，我们可以获得所需的数据：</p>
+<ul>
+<li>选择“Flame Graph”标签</li>
+<li>将“ GroupPats ”更改为以下值之一以获得更好的火焰图：</li>
+<li>将“ Fold％ ”更改为更高的数字，可能是3％，以消除一些悠长的线条（更高的条形，但将丢失一些细节信息）</li>
+</ul>
+<p><img src="../../static/images/818230a3c2095bc6be930df1506d17a211bf243b09562c9df905d46ae0475162.png" alt="PerfView - Flamegraph"></p>
+<p>现在，在这一点上，我建议用PerfView数据导出为可装入一个格式<a target="_blank" rel="noopener" href="https://speedscope.app/">https://speedscope.app</a> 这个网站上可以生成更直观的火焰图。为此，单击File-&gt;Save View As，然后在“Save as type”框中选择“Speed Scope Format”。之后即可上传到speedscope.app 进行分析。</p>
+<h2 id="NET运行时启动的分析"><a href="#NET运行时启动的分析" class="headerlink" title=".NET运行时启动的分析"></a>.NET运行时启动的分析</h2><p>最后，我们可以回答我们原来的问题：</p>
+<blockquote>
+<p>.NET运行时在启动过程中在哪里花费时间？</p>
+</blockquote>
+<p>这是来自Flamegraph的数据，摘要为文本，并链接了.NET Core Runtime源代码中的相应功能：</p>
+<ul>
+<li>整个应用-100％ -233.28ms</li>
+<li>一切，除了helloworld!wmain- 21％</li>
+<li>helloworld!wmain- 79％ - 184.57ms<ul>
+<li>coreclr!RunMain- 9.9％， - 23.12ms</li>
+<li>coreclr!RunStartupHooks- 8.1％， - 19.00ms</li>
+<li>coreclr!CorHost2::Start- 9％， - 20.98ms</li>
+<li>coreclr!CorHost2::CreateAppDomain- 10％ - 23.52ms</li>
+<li>hostpolicy!create_hostpolicy_context- 30％ - 70.92ms</li>
+<li>hostpolicy!create_coreclr- 22％ - 50.51ms</li>
+<li>hostpolicy!runapp- 20％ - 46.20ms 最终调用到Assembly::ExecuteMainMethod </li>
+<li>hostfxr!resolve_frameworks_for_app- 3.4％， - 7.89ms</li>
+</ul>
+</li>
+</ul>
+<p>因此，运行时花费时间的主要位置是：</p>
+<ul>
+<li>花了总时间的30％来启动运行时，这是通过“host policy”控制的，这主要发生在hostpolicy!create_hostpolicy_context总时间的30％中</li>
+<li>22％的时间花费在运行时本身及其创建的初始（唯一）AppDomain的初始化上，这可以在CorHost2::Start（native）和CorHost2::CreateAppDomain（managed）中看到。</li>
+<li>从上面开始，在我们的“ Hello World”代码示例中使用了20％的JITting并执行了该Main方法Assembly::ExecuteMainMethod。</li>
+</ul>
+<p>为了确认最后一点，我们可以返回PerfView并查看它产生的“ JIT统计摘要”。从主菜单的“高级组”-&gt;“ JIT统计信息”下，我们看到JITing花费了23.1 ms或9.1％的CPU总时间：</p>
+<p><img src="../../static/images/8fb1101eca336ff59b7bf83ae254136420c5850270f954022f75aeed0004a2ec.png" alt="PerfView - JIT Stats for HelloWorld"></p>
+
+    </div>
+    
+    <div class="reward" ontouchstart>
+    <div class="reward-wrap">赏
+        <div class="reward-box">
+            
+            <span class="reward-type">
+                <img class="alipay" src="/img/alipay.jpg"><b>支付宝打赏</b>
+            </span>
+            
+            
+        </div>
+    </div>
+    <p class="reward-tip">
+        赞赏是不耍流氓的鼓励
+    </p>
+</div>
+    
+    <div class="post-footer">
+        <div>
+            
+            转载声明：
+            商业转载请联系作者获得授权,非商业转载请注明出处 © <a href="https://nenufm.com" target="_blank">留声与视</a>
+            
+            
+        </div>
+        <div>
+            
+        </div>
+    </div>
+</article>
+<div class="article-nav prev-next-wrap clearfix">
+    
+    <a href="/archives/b/" class="pre-post btn btn-default" title='.NET运行时中的“Stack Walking”'>
+        <i class="fa fa-angle-left fa-fw"></i><span class="hidden-lg">上一篇</span>
+        <span class="hidden-xs">
+            .NET运行时中的“Stack Walking”</span>
+    </a>
+    
+    
+</div>
+
+<div id="comments">
+    
+<!-- <link rel="stylesheet" href="https://cdn.bootcss.com/gitalk/1.4.1/gitalk.min.css">
+<script src="//cdn.bootcss.com/gitalk/1.4.1/gitalk.min.js"></script>
+<script src="//cdn.bootcss.com/blueimp-md5/2.9.0/js/md5.min.js"></script> -->
+
+<link rel="stylesheet" href="/css/gitalk.min.css">
+
+
+<script src="/js/gitalk.min.js?rev=@@hash.js"></script>
+
+
+<script src="/js/md5.min.js?rev=@@hash.js"></script>
+
+<div id="gitalk-container"></div>
+<script type="text/javascript">
+var gitalk = new Gitalk({
+    // Gitalk配置
+    language: "zh-CN",
+    clientID: "3b507ca7f3f849c6bd9a",
+    clientSecret: "52c481471db065db5273ec5799ae15116272dba1",
+    repo: "dorthl.github.io",
+    owner: "dorthl",
+    admin: ["dorthl"],
+    id: md5(location.pathname),
+    distractionFreeMode: true
+});
+gitalk.render('gitalk-container');
+</script>
+
+</div>
+
+                </main>
+                
+                    <aside id="article-toc" role="navigation" class="col-md-4">
+    <div class="widget">
+        <h3 class="title">
+            文章目录
+        </h3>
+        
+        <ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#NET%E8%BF%90%E8%A1%8C%E6%97%B6%E5%9C%A8%E5%90%AF%E5%8A%A8%E8%BF%87%E7%A8%8B%E4%B8%AD%E5%9C%A8%E5%93%AA%E9%87%8C%E8%8A%B1%E8%B4%B9%E6%97%B6%E9%97%B4%EF%BC%9F"><span class="toc-text">.NET运行时在启动过程中在哪里花费时间？</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BB%A3%E7%A0%81%E6%A0%B7%E4%BE%8B"><span class="toc-text">代码样例</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E9%87%87%E9%9B%86"><span class="toc-text">数据采集</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E5%A4%84%E7%90%86"><span class="toc-text">数据处理</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#NET%E8%BF%90%E8%A1%8C%E6%97%B6%E5%90%AF%E5%8A%A8%E7%9A%84%E5%88%86%E6%9E%90"><span class="toc-text">.NET运行时启动的分析</span></a></li></ol></li></ol>
+        
+    </div>
+</aside>
+                
+            </div>
+        </div>
+    </section>
+    <footer class="main-footer">
+    <div class="container">
+        <div class="row">
+        </div>
+    </div>
+</footer>
+<a id="back-to-top" class="icon-btn hide">
+    <i class="fa fa-chevron-up"></i>
+</a>
+    <div class="copyright">
+    <div class="container">
+        <div class="row">
+            <div class="col-sm-12">
+                <div class="busuanzi">
+    
+    访问量:
+    <strong id="busuanzi_value_site_pv">
+        <i class="fa fa-spinner fa-spin"></i>
+    </strong>
+    &nbsp; | &nbsp;
+    访客数:
+    <strong id="busuanzi_value_site_uv">
+        <i class="fa fa-spinner fa-spin"></i>
+    </strong>
+    
+</div>
+            </div>
+            <div class="col-sm-12">
+                <span>Copyright &copy;
+                    2021
+                        <a href="/">
+                            留声与视
+                        </a>
+                        <a href="//beian.miit.gov.cn/" target="_blank" rel="nofollow">
+                                蜀ICP备16022835号-1
+                            </a>
+                            
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
+
+<script src="/js/app.js?rev=@@hash.js"></script>
+
+</body>
+</html>
